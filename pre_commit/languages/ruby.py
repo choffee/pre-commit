@@ -5,6 +5,8 @@ import io
 import os.path
 import shutil
 import tarfile
+import urllib.request
+from urllib.error import HTTPError
 
 import pre_commit.constants as C
 from pre_commit.envcontext import envcontext
@@ -53,17 +55,43 @@ def _extract_resource(filename, dest):
             tf.extractall(dest)
 
 
+def _extract_web_resource(url, dest):
+    with urllib.request.urlopen(url) as response:
+        with tarfile.open(response) as tf:
+            tf.extactall(dest)
+
+
 def _install_rbenv(prefix, version=C.DEFAULT):  # pragma: windows no cover
     directory = helpers.environment_dir(ENVIRONMENT_DIR, version)
 
-    _extract_resource('rbenv.tar.gz', prefix.path('.'))
-    shutil.move(prefix.path('rbenv'), prefix.path(directory))
+    try:
+        _extract_web_resource(
+            'https://github.com/rbenv/rbenv/archive/master.tar.gz',
+            prefix.path('.'),
+        )
+        shutil.move(
+            prefix.path('rbenv-master'),
+            prefix.path(os.path.join(directory, 'rbenv')),
+        )
+    except HTTPError:
+        _extract_resource('rbenv.tar.gz', prefix.path('.'))
+        shutil.move(prefix.path('rbenv'), prefix.path(directory))
 
     # Only install ruby-build if the version is specified
     if version != C.DEFAULT:
         plugins_dir = prefix.path(directory, 'plugins')
         _extract_resource('ruby-download.tar.gz', plugins_dir)
-        _extract_resource('ruby-build.tar.gz', plugins_dir)
+        try:
+            _extract_web_resource(
+                'https://github.com/rbenv/ruby-build/archive/master.tar.gz',
+                prefix.path('.'),
+            )
+            shutil.move(
+                prefix.path('rbenv-master'),
+                prefix.path(os.path.join(plugins_dir, 'ruby-build')),
+            )
+        except HTTPError:
+            _extract_resource('ruby-build.tar.gz', plugins_dir)
 
     activate_path = prefix.path(directory, 'bin', 'activate')
     with io.open(activate_path, 'w') as activate_file:
